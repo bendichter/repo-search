@@ -421,12 +421,43 @@ class ChromaVectorDatabase(VectorDatabase):
             return False
         
         # Delete all chunks for the repository
-        self.chunks_collection.delete(where={"repository": repository_name})
+        self.delete_repository_chunks(repository_name)
         
         # Delete the repository info
         self.repositories_collection.delete(ids=[repository_name])
         
         return True
+        
+    def delete_repository_chunks(self, repository_name: str) -> None:
+        """Delete all chunks for a repository from the database.
+        
+        This is used when re-chunking an entire repository.
+
+        Args:
+            repository_name: Repository name in the format 'owner/name'.
+        """
+        # Delete all chunks for the repository
+        self.chunks_collection.delete(where={"repository": repository_name})
+        print(f"Deleted all chunks for repository {repository_name}")
+        
+    def delete_file_chunks(self, repository_name: str, file_path: str) -> None:
+        """Delete all chunks for a specific file from the database.
+        
+        This is used when a file has been modified or deleted and its
+        chunks need to be removed or replaced.
+
+        Args:
+            repository_name: Repository name in the format 'owner/name'.
+            file_path: Path of the file within the repository.
+        """
+        # Delete all chunks for the specified file
+        self.chunks_collection.delete(
+            where={
+                "repository": repository_name,
+                "file_path": file_path
+            }
+        )
+        print(f"Deleted chunks for file {file_path} in repository {repository_name}")
 
     def clear(self) -> None:
         """Clear all data from the database."""

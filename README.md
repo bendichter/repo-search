@@ -10,6 +10,16 @@ RepoSearch is a tool for semantic search over GitHub repositories. It chunks rep
 - Generate semantic embeddings using OpenAI
 - Store embeddings in a vector database with a flexible backend
 - Provide semantic search capabilities through a Python API
+- **Smart file-level change detection** - Only re-process files that have changed since the last indexing, improving performance for large repositories
+
+## Optimized Indexing
+
+RepoSearch uses GitHub's file SHA hashes to detect which files have changed between indexing operations:
+
+- First run: Downloads, chunks, and embeds all repository files
+- Subsequent runs: Only re-processes files that have been added, modified, or deleted
+- Automatic cleanup: Removes chunks for deleted files from the vector database
+- Preserves repository structure: Maintains all metadata while optimizing processing time
 
 ## Getting Started
 
@@ -57,8 +67,14 @@ from repo_search.api.client import RepoSearchClient
 # Initialize the client
 client = RepoSearchClient()
 
-# Index a repository
+# Index a repository - automatically uses file-level change detection
 client.index_repository("owner/repo")
+
+# Force options are available if needed
+# client.index_repository("owner/repo", force_redownload=True)  # Force re-download
+# client.index_repository("owner/repo", force_rechunk=True)     # Force re-chunking
+# client.index_repository("owner/repo", force_reembed=True)     # Force re-embedding
+# client.index_repository("owner/repo", force_refresh=True)     # Force complete refresh
 
 # Perform a semantic search
 results = client.semantic_search("How to implement authentication?")

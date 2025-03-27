@@ -31,6 +31,12 @@ def index_repository(
 ) -> str:
     """Index a GitHub repository for semantic search.
     
+    The indexing process uses smart file-level change detection:
+    - Only re-processes files that have changed since the last indexing
+    - Uses GitHub's file SHA hashes to identify modified files
+    - Automatically removes chunks for deleted files
+    - Significantly improves performance for large repositories
+    
     Args:
         repository: Repository name in the format 'owner/name'
         force_refresh: If True, forces re-indexing of all steps even if commit hash is unchanged
@@ -298,7 +304,7 @@ async def handle_jsonrpc_request(request_str: str) -> str:
                     "tools": [
                         {
                             "name": "index_repository",
-                            "description": "Index a GitHub repository for semantic search",
+                            "description": "Index a GitHub repository for semantic search with smart file-level change detection",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {

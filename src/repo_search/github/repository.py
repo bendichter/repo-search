@@ -97,6 +97,11 @@ class GitHubRepositoryFetcher:
 
         print(f"Downloading {len(contents)} files from {repo_info.full_name}...")
         successfully_downloaded = 0
+        
+        # Initialize file_hashes dict if not already present
+        if not hasattr(repo_info, 'file_hashes') or repo_info.file_hashes is None:
+            repo_info.file_hashes = {}
+            
         for content_file in tqdm(contents):
             # Skip directories
             if content_file.type == "dir":
@@ -116,6 +121,11 @@ class GitHubRepositoryFetcher:
                 file_path.parent.mkdir(exist_ok=True, parents=True)
                 # Write the content to the file
                 file_path.write_bytes(file_content)
+                
+                # Store the file's SHA hash from GitHub
+                if hasattr(content_file, 'sha') and content_file.sha:
+                    repo_info.file_hashes[content_file.path] = content_file.sha
+                
                 successfully_downloaded += 1
             except AssertionError as e:
                 # This handles the "unsupported encoding: none" error
@@ -127,6 +137,7 @@ class GitHubRepositoryFetcher:
 
         repo_info.num_files = successfully_downloaded
         print(f"Successfully downloaded {successfully_downloaded} of {len(contents)} files")
+        print(f"Collected SHA hashes for {len(repo_info.file_hashes)} files")
 
     def _get_all_files(self, repo: Repository) -> List[Dict]:
         """Get all files in a repository.

@@ -1,7 +1,7 @@
 """Data models for RepoSearch."""
 
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Set, Union
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,7 @@ class RepositoryInfo(BaseModel):
     download_successful: bool = False
     chunking_successful: bool = False
     embedding_successful: bool = False
+    file_hashes: Dict[str, str] = Field(default_factory=dict)  # Maps file paths to their SHA hashes
 
     @property
     def full_name(self) -> str:

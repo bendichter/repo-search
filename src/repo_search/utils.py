@@ -1,10 +1,34 @@
 """Utility functions for RepoSearch."""
 
+import hashlib
 import textwrap
-from typing import List
+from pathlib import Path
+from typing import Dict, List
 import colorama
 from colorama import Fore, Style
 from repo_search.models import SearchResult
+
+
+def calculate_file_hash(file_path: Path) -> str:
+    """Calculate the SHA-256 hash of a file's contents.
+    
+    Args:
+        file_path: Path to the file.
+        
+    Returns:
+        SHA-256 hash of the file's contents as a hex string.
+    """
+    hash_obj = hashlib.sha256()
+    try:
+        with open(file_path, 'rb') as f:
+            # Read and update hash in chunks for memory efficiency
+            for byte_block in iter(lambda: f.read(4096), b""):
+                hash_obj.update(byte_block)
+        return hash_obj.hexdigest()
+    except Exception as e:
+        print(f"Error calculating hash for {file_path}: {e}")
+        # Return a unique placeholder hash for errored files
+        return f"error-{str(e)}"
 
 
 def pretty_print_results(results: List[SearchResult], max_content_length: int = 300) -> None:

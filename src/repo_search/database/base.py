@@ -97,6 +97,30 @@ class VectorDatabase(abc.ABC):
             True if the repository was deleted, False if it was not found.
         """
         pass
+        
+    @abc.abstractmethod
+    def delete_repository_chunks(self, repository_name: str) -> None:
+        """Delete all chunks for a repository from the database.
+        
+        This is used when re-chunking an entire repository.
+
+        Args:
+            repository_name: Repository name in the format 'owner/name'.
+        """
+        pass
+        
+    @abc.abstractmethod
+    def delete_file_chunks(self, repository_name: str, file_path: str) -> None:
+        """Delete all chunks for a specific file from the database.
+        
+        This is used when a file has been modified or deleted and its
+        chunks need to be removed or replaced.
+
+        Args:
+            repository_name: Repository name in the format 'owner/name'.
+            file_path: Path of the file within the repository.
+        """
+        pass
 
     @abc.abstractmethod
     def clear(self) -> None:

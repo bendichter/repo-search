@@ -84,6 +84,9 @@ class SearchEngine:
         need_download = True
         need_chunking = True
         need_embedding = True
+        # Track which files need processing at each stage
+        files_to_chunk = set()
+        files_to_delete = set()
         
         # If already indexed, check what steps we can skip
         if existing_repo:
@@ -135,6 +138,10 @@ class SearchEngine:
                     print(f"Repository {repository} has changed (commit {current_repo_info.commit_hash}).")
                     print(f"Previous commit: {existing_repo.commit_hash or 'unknown'}")
                 
+                # Copy over file hashes from existing repo for comparison later
+                if hasattr(existing_repo, 'file_hashes') and existing_repo.file_hashes:
+                    repo_info.file_hashes = existing_repo.file_hashes.copy()
+                
                 # Copy over non-commit-related metadata from existing repo
                 repo_info.num_chunks = existing_repo.num_chunks
                 repo_info.num_files = existing_repo.num_files
@@ -152,9 +159,45 @@ class SearchEngine:
                     repository, Path(temp_dir)
                 )
                 
+                # If we have existing file hashes, compare to identify changed files
+                if existing_repo and hasattr(existing_repo, 'file_hashes') and existing_repo.file_hashes:
+                    # Get new file hashes from the downloaded repo
+                    new_file_hashes = downloaded_repo_info.file_hashes
+                    old_file_hashes = existing_repo.file_hashes
+                    
+                    # Find files that are new or modified
+                    for file_path, file_hash in new_file_hashes.items():
+                        if file_path not in old_file_hashes or old_file_hashes[file_path] != file_hash:
+                            # File is new or modified, needs processing
+                            files_to_chunk.add(file_path)
+                            print(f"File changed or added: {file_path}")
+                    
+                    # Find files that were deleted
+                    for file_path in old_file_hashes:
+                        if file_path not in new_file_hashes:
+                            files_to_delete.add(file_path)
+                            print(f"File deleted: {file_path}")
+                    
+                    # If we have specific files to process, we need partial chunking
+                    if files_to_chunk and not force_rechunk:
+                        print(f"Detected {len(files_to_chunk)} changed files and {len(files_to_delete)} deleted files")
+                        need_chunking = True  # We need to chunk, but only specific files
+                else:
+                    # No previous file hashes or forced rechunk - process all files
+                    print("No previous file hashes available, will process all files")
+                    need_chunking = True
+                    if repo_dir:
+                        # Get list of all files in the repository
+                        for file_path in self.repo_fetcher.get_text_files(repo_dir):
+                            rel_path = file_path.relative_to(repo_dir)
+                            files_to_chunk.add(str(rel_path))
+                
                 # Update repo_info with download results
                 repo_info.num_files = downloaded_repo_info.num_files
                 repo_info.download_successful = True
+                
+                # Update file hashes with the latest from GitHub
+                repo_info.file_hashes = downloaded_repo_info.file_hashes
                 
                 # Store repository info (partial update)
                 self.db.add_repository(repo_info)
@@ -167,19 +210,60 @@ class SearchEngine:
         # Step 2: Chunk repository if needed
         chunks = []
         if need_chunking and repo_dir:
-            print(f"Chunking repository contents...")
-            try:
-                for chunk in self.chunker.chunk_repository(repository, repo_dir):
-                    chunks.append(chunk)
-                print(f"Generated {len(chunks)} chunks.")
-                repo_info.chunking_successful = True
-                self.db.add_repository(repo_info)
-            except Exception as e:
-                print(f"Error chunking repository: {e}")
-                repo_info.chunking_successful = False
-                self.db.add_repository(repo_info)
-                if not isinstance(e, UnicodeDecodeError):  # UnicodeDecodeError is expected for some files
-                    raise
+            # If we have specific files to chunk
+            if files_to_chunk and not force_rechunk:
+                print(f"Chunking {len(files_to_chunk)} changed/new files...")
+                try:
+                    # Delete chunks for deleted files
+                    if files_to_delete:
+                        print(f"Removing chunks for {len(files_to_delete)} deleted files...")
+                        for file_path in files_to_delete:
+                            self.db.delete_file_chunks(repository, file_path)
+                    
+                    # Chunk only the changed files
+                    for file_path in files_to_chunk:
+                        file_full_path = repo_dir / file_path
+                        # Check if file exists (might have been deleted)
+                        if file_full_path.exists() and file_full_path.is_file():
+                            # Remove existing chunks for this file
+                            self.db.delete_file_chunks(repository, file_path)
+                            
+                            # Check if it's a text file
+                            if self.repo_fetcher.is_text_file(file_full_path):
+                                # Chunk the file
+                                print(f"Chunking file: {file_path}")
+                                file_chunks = self.chunker.text_chunker.chunk_file(file_full_path, repository)
+                                chunks.extend(file_chunks)
+                    
+                    print(f"Generated {len(chunks)} chunks from changed files.")
+                    repo_info.chunking_successful = True
+                    self.db.add_repository(repo_info)
+                except Exception as e:
+                    print(f"Error chunking changed files: {e}")
+                    repo_info.chunking_successful = False
+                    self.db.add_repository(repo_info)
+                    if not isinstance(e, UnicodeDecodeError):  # UnicodeDecodeError is expected for some files
+                        raise
+            else:
+                # Process all files
+                print(f"Chunking all repository contents...")
+                try:
+                    # Delete all existing chunks
+                    if existing_repo:
+                        self.db.delete_repository_chunks(repository)
+                    
+                    # Chunk all files
+                    for chunk in self.chunker.chunk_repository(repository, repo_dir):
+                        chunks.append(chunk)
+                    print(f"Generated {len(chunks)} chunks.")
+                    repo_info.chunking_successful = True
+                    self.db.add_repository(repo_info)
+                except Exception as e:
+                    print(f"Error chunking repository: {e}")
+                    repo_info.chunking_successful = False
+                    self.db.add_repository(repo_info)
+                    if not isinstance(e, UnicodeDecodeError):  # UnicodeDecodeError is expected for some files
+                        raise
         
         # Step 3: Embed and store chunks if needed
         if need_embedding and (chunks or not need_chunking):
